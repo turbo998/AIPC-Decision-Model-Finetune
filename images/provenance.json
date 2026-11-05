@@ -1,0 +1,175 @@
+{
+  "generator": "scripts/render_diagrams.py",
+  "font": "msyh.ttc",
+  "reference": "https://github.com/jaredpalmer/kev/blob/2074cc44256200bb37540103fa4572901faa10f3/README.md",
+  "selection": "Upstream model/accuracy and playground figures do not describe this project's training, export and laptop validation paths.",
+  "visual_scope": "Azure Architecture Center style: blue title bar, grey lanes, white component cards, legend and source footnote; official Microsoft icons identify actual hosts and file artifacts, text badges identify PyTorch, Kev and llama.cpp, which have no ledgered icon; rendered at 2x the 1200x680 layout (training: 1200x728, with execution-location lanes).",
+  "icon_sources": "vendor/sources.json",
+  "assets": [
+    {
+      "file": "training.png",
+      "width": 2400,
+      "height": 1456,
+      "sha256": "e4a2f04f698093ddef872df5012697a6435889688ad81b1ceba92dbfa9ff3313",
+      "vendor_icons": [
+        "azure-vm",
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "zh",
+      "sources": [
+        "scripts/remote_pipeline_v2.sh",
+        "scripts/remote_cf_round.sh",
+        "scripts/remote_export_gguf.sh",
+        "https://github.com/jaredpalmer/kev/blob/2074cc44256200bb37540103fa4572901faa10f3/scripts/calibrate_checkpoint.py"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "training-en.png",
+      "width": 2400,
+      "height": 1456,
+      "sha256": "efa421cd6e0c8d95bcc5a08733683653d33bb8f72e5aa60c3d87311a778b9fcf",
+      "vendor_icons": [
+        "azure-vm",
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "en",
+      "sources": [
+        "scripts/remote_pipeline_v2.sh",
+        "scripts/remote_cf_round.sh",
+        "scripts/remote_export_gguf.sh",
+        "https://github.com/jaredpalmer/kev/blob/2074cc44256200bb37540103fa4572901faa10f3/scripts/calibrate_checkpoint.py"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "inference.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "d2c6b020f23822023012889ba658df508670fb39495f09f763c8091cf93e6e8d",
+      "vendor_icons": [
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "zh",
+      "sources": [
+        "scripts/systemone_client.py",
+        "scripts/run_engine_eval.ps1",
+        "https://github.com/ggml-org/llama.cpp/blob/b11935/tools/server/server-decision.cpp"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "inference-en.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "ed537fffb4c5a4dab5674822e8810e31488e739e7535a42d26a1358afd340581",
+      "vendor_icons": [
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "en",
+      "sources": [
+        "scripts/systemone_client.py",
+        "scripts/run_engine_eval.ps1",
+        "https://github.com/ggml-org/llama.cpp/blob/b11935/tools/server/server-decision.cpp"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "validation.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "fadd780784f34474f999289fd4355889f212377fdfa4cdfb076de17971206ec7",
+      "vendor_icons": [
+        "azure-vm",
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "zh",
+      "sources": [
+        "scripts/remote_pipeline_v2.sh",
+        "scripts/run_engine_eval.ps1",
+        "scripts/parity.py"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "validation-en.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "6d0f155e078e4407347de426ccfe2858f0471c65f580b8407f8d8c6df38b6d6e",
+      "vendor_icons": [
+        "azure-vm",
+        "file",
+        "laptop"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "en",
+      "sources": [
+        "scripts/remote_pipeline_v2.sh",
+        "scripts/run_engine_eval.ps1",
+        "scripts/parity.py"
+      ],
+      "proves": "project workflow, execution placement and scoring boundaries",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "decision.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "baad4c29a5899c99843451ba9ccca1ed6ef446d84bfc6eb12ca6ad00e9a00ff4",
+      "vendor_icons": [
+        "file"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "zh",
+      "sources": [
+        "https://github.com/jaredpalmer/kev/blob/2074cc44256200bb37540103fa4572901faa10f3/kev/model.py"
+      ],
+      "proves": "how Kev scores options in one forward pass, as implemented in kev/model.py",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "decision-en.png",
+      "width": 2400,
+      "height": 1360,
+      "sha256": "1c37a5d06e80c1ba1102f4e4da64cac4941f73ce3fa7bd594145d133828fac27",
+      "vendor_icons": [
+        "file"
+      ],
+      "kind": "original explanatory diagram",
+      "language": "en",
+      "sources": [
+        "https://github.com/jaredpalmer/kev/blob/2074cc44256200bb37540103fa4572901faa10f3/kev/model.py"
+      ],
+      "proves": "how Kev scores options in one forward pass, as implemented in kev/model.py",
+      "does_not_prove": "model accuracy or runtime success"
+    },
+    {
+      "file": "kev-leaderboard.png",
+      "width": 2380,
+      "height": 1615,
+      "sha256": "c302d60204aec1fd65a598094623ca78bd9ebe7c65883f7cab16dbba155fa1e4",
+      "kind": "unchanged producer-published figure",
+      "owner": "Jared Palmer / Kev",
+      "source": "https://raw.githubusercontent.com/jaredpalmer/kev/2074cc44256200bb37540103fa4572901faa10f3/docs/kev-family.png",
+      "license": "Apache-2.0",
+      "crop": "none",
+      "proves": "producer-reported transfer-v4 development comparison at commit 2074cc44",
+      "does_not_prove": "this project's vendor-task accuracy, laptop latency, or universal model ranking"
+    }
+  ]
+}

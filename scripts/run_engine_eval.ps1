@@ -1,0 +1,134 @@
+<#
+On-device engine run: start llama-server (b11935, CPU or Adreno OpenCL build) with one GGUF, score the Contoso test
+sets through /v1/systemone, record process memory, compare per question with the PyTorch rows, stop the server.
+Default server flags match the first released-model runs (-c 8192 -b 2048 -ub 2048 --cache-ram 0); -Ctx/-UBatch change them.
+Requests contain one question by default. Use -SingleQuestion:$false only to replay historical multi-question runs.
+
+  .\scripts\run_engine_eval.ps1 -Model C:\Tools\models\contoso-kev\Contoso-Kev-0.8B-FT-Q8_0.gguf -Label ft-kev-0.8b-Q8_0-cpu `
+    -SingleQuestion:$false -TorchPrefix 验证结果\微调评测_X\runs\0.8b\ft-
+  .\scripts\run_engine_eval.ps1 -Model ggml-org/Kev-0.8B-GGUF:Q8_0 -Label released-kev-0.8b-Q8_0-opencl -Backend opencl `
+    -SingleQuestion:$false -TorchPrefix 验证结果\端侧引擎_20261027-124700\pytorch-b0-0.8b\
+
+-TorchPrefix + "<workload>\rows.json" (released runs) or + "test_<workload>\rows.json" (kev run folders) must exist for parity.
+Results go to <OutRoot>\<Label>\; the default OutRoot is a new timestamped campaign. Existing label directories are rejected. Paths written into summary.json and
+parity_vs_pytorch.json are project-relative, so the records carry no machine-specific absolute paths. Another machine:
+  .\scripts\run_engine_eval.ps1 -Model C:\Tools\models\contoso-kev\Contoso-Kev-0.8B-FTcf-Q8_0.gguf -Label ftcf-kev-0.8b-Q8_0-cpu `
+    -SingleQuestion:$false -Bin C:\Tools\llama.cpp\b11935-cpu-x64 -OutRoot 验证结果\端侧引擎_x64_20261030-232500 -TorchPrefix 验证结果\端侧引擎_20261027-124700\pytorch-ftcf-0.8b\
+#>
+param(
+    [Parameter(Mandatory)] [string] $Model,
+    [Parameter(Mandatory)] [string] $Label,
+    [ValidateSet('cpu', 'opencl')] [string] $Backend = 'cpu',
+    [string] $TorchPrefix = '',
+    [string[]] $Workloads = @('support', 'assistant'),
+    [int] $Port = 8080,
+    [int] $Ctx = 8192,      # -c; the lean deployment check uses 2048 (inputs are ~500 tokens)
+    [int] $UBatch = 2048,   # -b and -ub; the lean deployment check uses 512
+    [string] $DataPrefix = 'test_',  # 'policy_test_' scores the prompt-only variant (policy text in every question)
+    [string] $Bin = '',              # llama.cpp folder; default = the ARM64 b11935 folders used by the laptop runs. x64: C:\Tools\llama.cpp\b11935-cpu-x64
+    [string] $OutRoot = '',
+    [int] $Concurrency = 1,          # client requests kept in flight (systemone_client.py --concurrency); 1 = the sequential laptop method
+    [int] $Parallel = 0,             # llama-server -np slots; 0 = leave the server default (auto, 4 on b11935 for this model)
+    [switch] $SingleQuestion = $true
+)
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+Push-Location $root  # relative paths below are resolved and recorded from the project root
+if ($SingleQuestion -and -not $PSBoundParameters.ContainsKey('Workloads')) {
+    $Workloads = @('test_support', 'test_assistant', 'ood_support', 'ood_assistant')
+    if (-not $PSBoundParameters.ContainsKey('DataPrefix')) { $DataPrefix = '' }
+}
+$bin = if ($Bin) { $Bin } elseif ($Backend -eq 'cpu') { 'C:\Tools\llama.cpp\b11935-cpu' } else { 'C:\Tools\llama.cpp\b11935-opencl-adreno' }
+if (-not $OutRoot) { $OutRoot = Join-Path '验证结果' ('端侧引擎_' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')) }
+$out = Join-Path $OutRoot $Label
+if (Test-Path -LiteralPath $out) { throw "engine output already exists: $out" }
+New-Item -ItemType Directory -Path $out | Out-Null
+$log = Join-Path $env:TEMP "llama-server-$Label.log"
+
+$argList = @()
+if (Test-Path -LiteralPath $Model) { $argList += @('-m', ('"{0}"' -f (Resolve-Path -LiteralPath $Model).Path)) } else { $argList += @('-hf', $Model) }
+$argList += @('--host', '127.0.0.1', '--port', "$Port", '-c', "$Ctx", '-b', "$UBatch", '-ub', "$UBatch", '--cache-ram', '0')
+if ($Backend -eq 'opencl') { $argList += @('-ngl', '99') }
+if ($Parallel -gt 0) { $argList += @('-np', "$Parallel") }
+$portDeadline = (Get-Date).AddSeconds(60)  # the previous run's server may still be releasing the port
+while (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) {
+    if ((Get-Date) -gt $portDeadline) { throw "port $Port is still in use after 60 s" }
+    Start-Sleep -Milliseconds 500
+}
+
+$server = Start-Process -FilePath (Join-Path $bin 'llama-server.exe') -ArgumentList $argList -PassThru -WindowStyle Hidden `
+    -RedirectStandardError $log -RedirectStandardOutput "$log.out"
+$result = [ordered]@{ label = $Label; model = $Model; backend = $Backend; build = (Split-Path -Leaf $bin); server_args = ($argList -join ' '); data_prefix = $DataPrefix
+                      client_concurrency = $Concurrency; logical_processors = [Environment]::ProcessorCount }
+$result.request_mode = if ($SingleQuestion) { 'single_question' } else { 'record' }
+if ($SingleQuestion) {
+    $result.host = $env:COMPUTERNAME
+    $result.architecture = $env:PROCESSOR_ARCHITECTURE
+    $result.cpu = @((Get-CimInstance Win32_Processor).Name)
+    $result.client_sha256 = (Get-FileHash -LiteralPath 'scripts\systemone_client.py' -Algorithm SHA256).Hash.ToLower()
+    $result.runner_sha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLower()
+    $result.engine_sha256 = (Get-FileHash -LiteralPath (Join-Path $bin 'llama-server.exe') -Algorithm SHA256).Hash.ToLower()
+    if ($TorchPrefix) { Write-Warning 'Single-question runs do not compare against historical multi-question PyTorch answers.' }
+}
+try {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $ready = $false
+    while (-not $ready -and $sw.Elapsed.TotalSeconds -lt 900) {
+        if ($server.HasExited) { throw "llama-server exited with code $($server.ExitCode); see $log" }
+        try { $ready = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 3).StatusCode -eq 200 } catch { Start-Sleep -Seconds 2 }
+    }
+    if (-not $ready) { throw "llama-server not healthy after 900 s; see $log" }
+    $result.load_seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
+    $result.server_log_facts = @(Select-String -LiteralPath $log -Pattern 'decision model type|ggml_opencl: device|offloaded|CPU_REPACK model buffer|OpenCL model buffer|CPU model buffer|KV buffer size|compute buffer size|file type|model size' | ForEach-Object { $_.Line.Trim() })
+
+    $result.server_log_facts += @(Select-String -LiteralPath $log -Pattern 'n_slots|n_threads' | ForEach-Object { $_.Line.Trim() })
+    $result.workload_cpu_seconds = [ordered]@{}
+    foreach ($w in $Workloads) {
+        $data = "data\contoso\final\$DataPrefix$w.jsonl"
+        $server.Refresh(); $cpuBefore = $server.TotalProcessorTime.TotalSeconds; $wallBefore = Get-Date
+        $clientArgs = @('--url', "http://127.0.0.1:$Port/v1/systemone", '--data', $data,
+                '--out', (Join-Path $out $w), '--concurrency', "$Concurrency")
+        if ($SingleQuestion) { $clientArgs += '--single-question' } else { $clientArgs += '--record-questions' }
+        python scripts\systemone_client.py @clientArgs
+        if ($LASTEXITCODE -ne 0) { throw "client failed for $w" }
+        $server.Refresh()  # server CPU time consumed by this workload (incl. warm-up), for utilisation = cpu / wall / logical processors
+        $result.workload_cpu_seconds[$w] = [ordered]@{ cpu_seconds = [math]::Round($server.TotalProcessorTime.TotalSeconds - $cpuBefore, 1)
+                                                      wall_seconds_incl_warmup = [math]::Round(((Get-Date) - $wallBefore).TotalSeconds, 1) }
+        if ($TorchPrefix -and -not $SingleQuestion) {
+            $torch = @("$TorchPrefix$w\rows.json", "${TorchPrefix}test_$w\rows.json") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if ($torch) {
+                python scripts\parity.py --torch $torch --engine (Join-Path $out "$w\rows.jsonl") --out (Join-Path $out "$w\parity_vs_pytorch.json")
+                if ($LASTEXITCODE -ne 0) { throw "parity comparison failed for $w (exit $LASTEXITCODE)" }
+            } else { throw "no PyTorch rows for $w under $TorchPrefix" }
+        }
+    }
+
+    $server.Refresh()
+    $proc = Get-Process -Id $server.Id
+    $result.peak_working_set_mib = [int]($proc.PeakWorkingSet64 / 1MB)
+    $result.working_set_mib = [int]($proc.WorkingSet64 / 1MB)
+    $result.private_mib = [int]($proc.PrivateMemorySize64 / 1MB)
+    $result.cpu_seconds = [int]$proc.TotalProcessorTime.TotalSeconds
+    if ($Backend -eq 'opencl') {
+        $gpu = Get-Counter -Counter '\GPU Process Memory(*)\Shared Usage', '\GPU Process Memory(*)\Dedicated Usage' -ErrorAction SilentlyContinue
+        $mine = $gpu.CounterSamples | Where-Object { $_.InstanceName -like "pid_$($server.Id)_*" }
+        $result.gpu_shared_mib = [int](($mine | Where-Object { $_.Path -like '*shared usage' } | Measure-Object CookedValue -Sum).Sum / 1MB)
+        $result.gpu_dedicated_mib = [int](($mine | Where-Object { $_.Path -like '*dedicated usage' } | Measure-Object CookedValue -Sum).Sum / 1MB)
+    }
+    if (Test-Path -LiteralPath $Model) {
+        $result.gguf_mib = [math]::Round((Get-Item -LiteralPath $Model).Length / 1MB, 1)
+        $result.gguf_sha256 = (Get-FileHash -LiteralPath $Model -Algorithm SHA256).Hash.ToLower()
+    }
+    $result.captured = (Get-Date).ToString('o')
+    $result.summaries = @{}
+    foreach ($w in $Workloads) { $result.summaries[$w] = Get-Content -LiteralPath (Join-Path $out "$w\summary.json") -Raw | ConvertFrom-Json }
+}
+finally {
+    if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force; $null = $server.WaitForExit(30000) }
+    Copy-Item -LiteralPath $log -Destination (Join-Path $out 'server.log') -Force -ErrorAction SilentlyContinue
+}
+$result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $out 'run.json') -Encoding utf8
+[pscustomobject]$result | Select-Object label, backend, load_seconds, peak_working_set_mib, private_mib, gpu_shared_mib | Format-List
+foreach ($w in $Workloads) { "{0}: acc={1} p50={2} ms p90={3} ms" -f $w, $result.summaries[$w].accuracy, $result.summaries[$w].latency_ms.p50, $result.summaries[$w].latency_ms.p90 }
+Pop-Location
+Write-Output "__ENGINE_EVAL_DONE__ $Label"
